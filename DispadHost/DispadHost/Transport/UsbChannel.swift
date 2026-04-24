@@ -97,28 +97,42 @@ actor UsbChannel {
         self.continuation?.finish()
         self.continuation = continuation
 
-        let hub = PTUSBHub.shared()
-        self.hub = hub
-
+        // Register observers BEFORE touching the shared hub. Peertalk's
+        // PTUSBHub posts .deviceDidAttach notifications for already-connected
+        // devices when it starts listening (on first access to sharedHub).
+        // If we register after that first access, we miss the retroactive
+        // events for any iPad that was plugged in at app launch.
+        //
+        // object: nil matches any sender, so we don't need the hub to exist
+        // first. There's only one shared hub in-process, so filtering by
+        // object adds nothing.
         attachObserver = NotificationCenter.default.addObserver(
             forName: .deviceDidAttach,
-            object: hub,
+            object: nil,
             queue: .main
         ) { [weak self] note in
             guard let self else { return }
             let id = note.userInfo?[PTUSBHubNotificationKey.deviceID] as? NSNumber
+            print("UsbChannel: deviceDidAttach id=\(id?.stringValue ?? "nil")")
             Task { await self.handleAttach(deviceID: id) }
         }
 
         detachObserver = NotificationCenter.default.addObserver(
             forName: .deviceDidDetach,
-            object: hub,
+            object: nil,
             queue: .main
         ) { [weak self] note in
             guard let self else { return }
             let id = note.userInfo?[PTUSBHubNotificationKey.deviceID] as? NSNumber
+            print("UsbChannel: deviceDidDetach id=\(id?.stringValue ?? "nil")")
             Task { await self.handleDetach(deviceID: id) }
         }
+
+        // Now touch sharedHub so it starts listening. Any retroactive
+        // attach events fire here and are caught by the observers above.
+        let hub = PTUSBHub.shared()
+        self.hub = hub
+        print("UsbChannel: hub listening on port \(port)")
     }
 
     private func handleAttach(deviceID: NSNumber?) {
@@ -130,11 +144,14 @@ actor UsbChannel {
         self.delegateProxy = proxy
         self.channel = channel
 
+        print("UsbChannel: attempting connect to device \(deviceID) on port \(port)")
         channel.connect(to: Int32(port), over: hub, deviceID: deviceID) { [weak self] error in
             guard let self else { return }
-            if error != nil {
+            if let error {
+                print("UsbChannel: connect failed: \(error)")
                 Task { await self.teardownChannel(emitDisconnected: false) }
             } else {
+                print("UsbChannel: connect succeeded")
                 Task { await self.markConnected() }
             }
         }
