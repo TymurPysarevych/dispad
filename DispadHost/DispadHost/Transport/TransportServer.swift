@@ -1,20 +1,58 @@
 import Foundation
 import DispadProtocol
 
-final class TransportServer {
-    var onClientConnected: (() -> Void)?
-    var onClientDisconnected: (() -> Void)?
+@MainActor
+final class TransportServer: ObservableObject {
+    @Published var isConnected: Bool = false
+
+    var onMessage: ((Message) -> Void)?
+
+    private var channel: UsbChannel?
+    private var eventTask: Task<Void, Never>?
+    private let reader = FrameReader()
 
     func start() {
-        // TODO: open a Peertalk-style usbmuxd listening channel on ProtocolVersion.fixedPort.
-        // Accept a single client at a time; emit onClientConnected / onClientDisconnected.
+        let channel = UsbChannel()
+        self.channel = channel
+
+        eventTask = Task { [weak self] in
+            guard let self else { return }
+            for await event in await channel.events() {
+                await self.handle(event)
+            }
+        }
     }
 
     func stop() {
-        // TODO: close listener and any active client channel.
+        eventTask?.cancel()
+        eventTask = nil
+        Task { [channel] in await channel?.stop() }
+        channel = nil
     }
 
     func send(_ message: Message) {
-        // TODO: WireCodec.encode(message) and write to the active client channel.
+        let frame = WireCodec.encode(message)
+        Task { [channel] in
+            try? await channel?.send(frame)
+        }
+    }
+
+    private func handle(_ event: UsbChannel.Event) async {
+        switch event {
+        case .connected:
+            self.isConnected = true
+        case .disconnected:
+            self.isConnected = false
+        case let .received(data):
+            self.reader.feed(data)
+            do {
+                while let payload = try reader.nextFrame() {
+                    let message = try WireCodec.decode(payload: payload)
+                    self.onMessage?(message)
+                }
+            } catch {
+                print("TransportServer decode error: \(error)")
+            }
+        }
     }
 }
