@@ -1,4 +1,6 @@
 import SwiftUI
+import CoreMedia
+import CoreVideo
 import DispadProtocol
 
 @main
@@ -38,6 +40,11 @@ final class HostCoordinator: ObservableObject {
     private let transport = TransportServer()
 
     init() {
+        transport.onMessage = { [weak self] message in
+            if case .hello = message {
+                Task { @MainActor in self?.start() }
+            }
+        }
         startTransport()
     }
 
@@ -57,10 +64,47 @@ final class HostCoordinator: ObservableObject {
     }
 
     func start() {
-        // TODO: wire capture → encoder → transport pipeline
+        guard case .waitingForClient = state else { return }
+
+        // Capture non-isolated references so callbacks invoked off the MainActor
+        // (VideoToolbox output thread, capture dispatch queue) don't touch
+        // MainActor-isolated state.
+        let encoder = self.encoder
+        let transport = self.transport
+
+        encoder.onFrame = { frame in
+            if let ps = frame.parameterSets {
+                Task { try? await transport.send(.config(parameterSets: ps)) }
+            }
+            Task {
+                try? await transport.send(
+                    .videoFrame(isKeyframe: frame.isKeyframe, pts: frame.pts, naluData: frame.nalus)
+                )
+            }
+        }
+
+        capture.onSample = { sample in
+            guard let pb = CMSampleBufferGetImageBuffer(sample) else { return }
+            let w = Int32(CVPixelBufferGetWidth(pb))
+            let h = Int32(CVPixelBufferGetHeight(pb))
+            try? encoder.configure(width: w, height: h)
+            encoder.encode(sample)
+        }
+
+        Task {
+            do {
+                try await capture.start()
+                self.state = .streaming
+            } catch {
+                self.state = .error(String(describing: error))
+            }
+        }
     }
 
     func stop() {
-        // TODO: tear down pipeline
+        Task { await capture.stop() }
+        encoder.invalidate()
+        transport.stop()
+        state = .idle
     }
 }
