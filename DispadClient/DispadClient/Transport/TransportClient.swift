@@ -7,6 +7,15 @@ enum TransportError: Error {
     case notConnected
 }
 
+private func isLoopback(_ host: NWEndpoint.Host) -> Bool {
+    switch host {
+    case .ipv4(let addr): return addr == .loopback
+    case .ipv6(let addr): return addr == .loopback
+    case .name(let name, _): return name == "localhost" || name == "ip6-localhost"
+    @unknown default: return false
+    }
+}
+
 @MainActor
 final class TransportClient: ObservableObject {
     @Published var isConnected: Bool = false
@@ -35,7 +44,18 @@ final class TransportClient: ObservableObject {
                 Log.transport.info("TransportClient listener state: \(String(describing: state), privacy: .public)")
             }
             listener.newConnectionHandler = { [weak self] connection in
-                Log.transport.info("TransportClient: new connection from \(String(describing: connection.endpoint), privacy: .public)")
+                let endpoint = connection.endpoint
+                Log.transport.info("TransportClient: new connection from \(String(describing: endpoint), privacy: .public)")
+
+                // Peertalk's usbmuxd tunnel terminates at 127.0.0.1 on this device.
+                // Any non-loopback peer is a Wi-Fi stranger — reject to avoid
+                // exposing our listener to the local network.
+                if case let .hostPort(host, _) = endpoint, !isLoopback(host) {
+                    Log.transport.info("TransportClient: rejecting non-loopback peer \(String(describing: host), privacy: .public)")
+                    connection.cancel()
+                    return
+                }
+
                 Task { @MainActor in
                     self?.accept(connection)
                 }
