@@ -1,0 +1,45 @@
+name: DispadHost
+
+options:
+  bundleIdPrefix: com.dispad
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+
+packages:
+  DispadProtocol:
+    path: ../DispadProtocol
+
+targets:
+  DispadHost:
+    type: application
+    platform: macOS
+    sources:
+      - path: DispadHost
+        excludes:
+          - "LaunchAgent/com.dispad.host.plist"
+      - path: DispadHost/LaunchAgent/com.dispad.host.plist
+        type: file
+        buildPhase: resources
+    dependencies:
+      - package: DispadProtocol
+    entitlements:
+      path: DispadHost/DispadHost.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+    info:
+      path: DispadHost/Info.plist
+      properties:
+        CFBundleName: DispadHost
+        CFBundleDisplayName: Dispad
+        LSUIElement: true
+        NSHumanReadableCopyright: "Copyright © 2026 Tymur Pysarevych. MIT licensed."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dispad.host
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.9"
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""

@@ -45,11 +45,12 @@ xattr -d com.apple.quarantine /Applications/DispadHost.app
 iOS doesn't allow distributing apps outside the App Store without a paid developer account, so you build from source:
 
 1. Clone this repo on a Mac with Xcode installed.
-2. Open `DispadClient/DispadClient.xcodeproj` in Xcode.
-3. Select the `DispadClient` scheme and your iPad as the run destination.
-4. Under Signing & Capabilities, pick your personal Apple ID as the team.
-5. Hit Run. The app is built and installed on your iPad.
-6. Trust your developer certificate on the iPad: Settings → General → VPN & Device Management.
+2. Run `./scripts/bootstrap.sh` — this installs XcodeGen (via Homebrew) and generates the two `.xcodeproj` files from their `project.yml` specs.
+3. Open `DispadClient/DispadClient.xcodeproj` in Xcode.
+4. Select the `DispadClient` scheme and your iPad as the run destination.
+5. Under Signing & Capabilities, pick your personal Apple ID as the team.
+6. Hit Run. The app is built and installed on your iPad.
+7. Trust your developer certificate on the iPad: Settings → General → VPN & Device Management.
 
 Free Apple IDs require re-signing the app every 7 days. A paid developer account lasts a year.
 

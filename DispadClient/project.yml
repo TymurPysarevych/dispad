@@ -1,0 +1,42 @@
+name: DispadClient
+
+options:
+  bundleIdPrefix: com.dispad
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+packages:
+  DispadProtocol:
+    path: ../DispadProtocol
+
+targets:
+  DispadClient:
+    type: application
+    platform: iOS
+    sources:
+      - path: DispadClient
+    dependencies:
+      - package: DispadProtocol
+    info:
+      path: DispadClient/Info.plist
+      properties:
+        CFBundleName: DispadClient
+        CFBundleDisplayName: Dispad
+        UILaunchScreen:
+          UIColorName: ""
+        UIStatusBarHidden: true
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIApplicationSupportsIndirectInputEvents: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dispad.client
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "2"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
