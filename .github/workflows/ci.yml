@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-protocol:
+    name: DispadProtocol tests
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: swift test
+        working-directory: DispadProtocol
+        run: swift test --parallel
+
+  build-host:
+    name: DispadHost build
+    runs-on: macos-14
+    if: hashFiles('DispadHost/DispadHost.xcodeproj/project.pbxproj') != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: xcodebuild
+        run: |
+          xcodebuild \
+            -project DispadHost/DispadHost.xcodeproj \
+            -scheme DispadHost \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+  build-client:
+    name: DispadClient build
+    runs-on: macos-14
+    if: hashFiles('DispadClient/DispadClient.xcodeproj/project.pbxproj') != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: xcodebuild
+        run: |
+          xcodebuild \
+            -project DispadClient/DispadClient.xcodeproj \
+            -scheme DispadClient \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build

@@ -1,0 +1,85 @@
+# dispad
+
+Use an iPad as the primary display for a headless Mac mini, over a USB-C cable.
+
+## Why
+
+Apple Sidecar cannot start before you log in, and a headless Mac mini will not render to its GPU without a monitor. Commercial products like Luna Display solve this with a proprietary USB dongle. `dispad` solves it with software only, open source and free.
+
+## How it works
+
+```
+Mac mini ──(USB-C, usbmuxd tunnel)──► iPad
+
+DispadHost.app on the Mac:
+  ScreenCaptureKit → VideoToolbox HEVC encoder → usbmuxd server
+
+DispadClient.app on the iPad:
+  usbmuxd client → VideoToolbox decoder → AVSampleBufferDisplayLayer
+```
+
+## Requirements
+
+- macOS 13 or newer (Apple Silicon recommended)
+- iPadOS 16 or newer, any iPad with A12 Bionic or newer (HEVC hardware decode)
+- A USB-C cable that supports data (most do)
+- Bluetooth keyboard and mouse paired to the Mac mini (the iPad is display-only for now)
+
+## Installation
+
+### Mac side (DispadHost)
+
+1. Download the latest `DispadHost.dmg` from [Releases](../../releases).
+2. Drag `DispadHost.app` to `/Applications`.
+3. On first launch, grant Screen Recording permission in System Settings → Privacy & Security.
+4. The app installs a LaunchAgent that auto-starts it at login.
+
+The build is unsigned. If macOS refuses to open it, run:
+
+```bash
+xattr -d com.apple.quarantine /Applications/DispadHost.app
+```
+
+### iPad side (DispadClient)
+
+iOS doesn't allow distributing apps outside the App Store without a paid developer account, so you build from source:
+
+1. Clone this repo on a Mac with Xcode installed.
+2. Open `DispadClient/DispadClient.xcodeproj` in Xcode.
+3. Select the `DispadClient` scheme and your iPad as the run destination.
+4. Under Signing & Capabilities, pick your personal Apple ID as the team.
+5. Hit Run. The app is built and installed on your iPad.
+6. Trust your developer certificate on the iPad: Settings → General → VPN & Device Management.
+
+Free Apple IDs require re-signing the app every 7 days. A paid developer account lasts a year.
+
+See [`docs/installation.md`](docs/installation.md) for troubleshooting.
+
+## Usage
+
+1. Boot the Mac mini (no monitor needed; log in blindly).
+2. Launch `DispadClient` on your iPad.
+3. Connect the iPad to the Mac with a USB-C cable.
+4. The connection establishes automatically. The iPad shows the Mac's screen.
+
+## Project layout
+
+```
+dispad/
+├── DispadHost/          # macOS app (Xcode project)
+├── DispadClient/        # iPadOS app (Xcode project)
+├── DispadProtocol/      # Shared Swift package (wire format)
+├── ThirdParty/Peertalk/ # Vendored usbmuxd bindings
+├── docs/                # Architecture and installation docs
+└── .github/workflows/   # CI
+```
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). This is an MIT-licensed hobby project; issues and PRs are welcome.
+
+## License
+
+MIT. See [`LICENSE`](LICENSE).
+
+Peertalk is vendored under `ThirdParty/Peertalk/` with its original MIT license.
