@@ -41,6 +41,7 @@ final class ClientCoordinator: ObservableObject {
 
     private let transport = TransportClient()
     private var formatDescription: CMFormatDescription?
+    private var frameCounter = ClientFrameCounter()
 
     init() {
         displayLayer.videoGravity = .resizeAspect
@@ -68,11 +69,10 @@ final class ClientCoordinator: ObservableObject {
             markDisplayImmediately(sample)
             if displayLayer.isReadyForMoreMediaData {
                 displayLayer.enqueue(sample)
+                frameCounter.tick(accepted: true)
+            } else {
+                frameCounter.tick(accepted: false)
             }
-            // If the layer isn't ready, drop the frame. Flushing every
-            // back-pressure tick tears down the decoder pipeline and
-            // causes stutter; dropping lets the decoder catch up and
-            // the next keyframe resyncs the picture cleanly.
 
         case .hello, .heartbeat:
             break
@@ -140,5 +140,29 @@ final class ClientCoordinator: ObservableObject {
         )
         guard status == noErr else { return nil }
         return sample
+    }
+}
+
+/// Per-second rate counter for frames received and frames actually enqueued.
+/// A gap between "received" and "enqueued" means the display layer is
+/// applying back-pressure and we're dropping frames.
+final class ClientFrameCounter {
+    private var windowStart = CFAbsoluteTimeGetCurrent()
+    private var received = 0
+    private var enqueued = 0
+
+    func tick(accepted: Bool) {
+        received += 1
+        if accepted { enqueued += 1 }
+        let now = CFAbsoluteTimeGetCurrent()
+        let elapsed = now - windowStart
+        if elapsed >= 1.0 {
+            print(String(format: "DispadClient: %.1f fps received, %.1f fps enqueued",
+                         Double(received) / elapsed,
+                         Double(enqueued) / elapsed))
+            received = 0
+            enqueued = 0
+            windowStart = now
+        }
     }
 }

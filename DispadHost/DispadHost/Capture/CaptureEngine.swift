@@ -16,12 +16,16 @@ final class CaptureEngine: NSObject, SCStreamOutput {
 
         let filter = SCContentFilter(display: display, excludingWindows: [])
         let config = SCStreamConfiguration()
-        config.width = display.width * 2
-        config.height = display.height * 2
+        // Capture at point-resolution (1x). The iPad scales to fit anyway, and
+        // cutting pixel count 4x relative to Retina (2x) dramatically reduces
+        // encoder load and lets the pipeline hit frame-rate targets.
+        config.width = display.width
+        config.height = display.height
         config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
         config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         config.queueDepth = 6
         config.showsCursor = true
+        print("CaptureEngine: starting at \(config.width)x\(config.height) @ up to 60fps")
 
         let stream = SCStream(filter: filter, configuration: config, delegate: nil)
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
