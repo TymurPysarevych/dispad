@@ -40,14 +40,25 @@ final class TransportServer: ObservableObject {
     }
 
     func stop() {
-        outboundTask?.cancel()
-        outboundTask = nil
+        // 1) Close the outbound stream so the consumer's `for await` exits
+        //    naturally after processing what's already buffered.
         outboundContinuation?.finish()
         outboundContinuation = nil
 
+        // 2) Wait for the consumer task to drain and exit. We don't need to
+        //    actively cancel it — finishing the continuation makes `for await`
+        //    return on its own, and awaiting the task prevents shutting the
+        //    channel down mid-send.
+        let drainingOutbound = outboundTask
+        outboundTask = nil
+
+        // 3) Stop the inbound event task and close the channel.
         eventTask?.cancel()
         eventTask = nil
-        Task { [channel] in await channel?.stop() }
+        Task { [channel, drainingOutbound] in
+            await drainingOutbound?.value
+            await channel?.stop()
+        }
         channel = nil
     }
 
@@ -57,7 +68,11 @@ final class TransportServer: ObservableObject {
     /// but not propagated — the pipeline will drop frames until the
     /// next keyframe if the channel dies mid-send.
     func enqueue(_ message: Message) {
-        outboundContinuation?.yield(message)
+        guard let continuation = outboundContinuation else {
+            Log.transport.error("TransportServer.enqueue called before start() or after stop(); dropping message")
+            return
+        }
+        continuation.yield(message)
     }
 
     func send(_ message: Message) async throws {
