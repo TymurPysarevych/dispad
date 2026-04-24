@@ -112,13 +112,9 @@ final class HostCoordinator: ObservableObject {
         encoder.onFrame = { frame in
             counter.tick(bytes: frame.nalus.count)
             if let ps = frame.parameterSets {
-                Task { try? await transport.send(.config(parameterSets: ps)) }
+                transport.enqueue(.config(parameterSets: ps))
             }
-            Task {
-                try? await transport.send(
-                    .videoFrame(isKeyframe: frame.isKeyframe, pts: frame.pts, naluData: frame.nalus)
-                )
-            }
+            transport.enqueue(.videoFrame(isKeyframe: frame.isKeyframe, pts: frame.pts, naluData: frame.nalus))
         }
 
         capture.onSample = { sample in
