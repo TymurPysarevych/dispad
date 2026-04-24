@@ -106,7 +106,10 @@ actor UsbChannel {
             let id = note.userInfo?[PTUSBHubNotificationKey.deviceID] as? NSNumber
             let props = note.userInfo?[PTUSBHubNotificationKey.properties] as? [String: Any]
             let connectionType = props?["ConnectionType"] as? String ?? "unknown"
-            print("UsbChannel: deviceDidAttach id=\(id?.stringValue ?? "nil") type=\(connectionType)")
+            let serial = (props?["SerialNumber"] as? String) ?? "unknown"
+            let productID = (props?["ProductID"] as? NSNumber)?.stringValue ?? "?"
+            let locationID = (props?["LocationID"] as? NSNumber)?.stringValue ?? "?"
+            print("UsbChannel: deviceDidAttach id=\(id?.stringValue ?? "nil") type=\(connectionType) productID=\(productID) location=\(locationID) serial=\(serial)")
             guard connectionType == "USB" else {
                 print("UsbChannel: skipping non-USB device (type=\(connectionType))")
                 return
@@ -171,8 +174,11 @@ actor UsbChannel {
         // One long-running read drains bytes for the life of the channel.
         // length: Int.max means "read until EOF"; handler fires per chunk
         // with done:false, and once with done:true at EOF/error.
+        print("UsbChannel: starting read loop on ioQueue")
         rawIO.read(offset: 0, length: Int.max, queue: ioQueue) { [weak self] done, data, error in
             guard let self else { return }
+            let dataCount = data?.count ?? 0
+            print("UsbChannel: read fire done=\(done) bytes=\(dataCount) error=\(error)")
             if let data, !data.isEmpty {
                 let bytes = Data(data)
                 Task { await self.deliverReceived(bytes) }

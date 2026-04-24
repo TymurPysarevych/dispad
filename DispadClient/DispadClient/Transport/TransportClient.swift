@@ -87,6 +87,7 @@ final class TransportClient: ObservableObject {
 
         connection.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
+            print("TransportClient connection state: \(state)")
             Task { @MainActor in
                 switch state {
                 case .ready:
@@ -97,8 +98,12 @@ final class TransportClient: ObservableObject {
                         screenHeight: UInt16(UIScreen.main.nativeBounds.height)
                     )
                     Task {
-                        do { try await self.send(hello) }
-                        catch { print("TransportClient hello send failed: \(error)") }
+                        do {
+                            try await self.send(hello)
+                            print("TransportClient: hello sent")
+                        } catch {
+                            print("TransportClient hello send failed: \(error)")
+                        }
                     }
                 case .failed, .cancelled:
                     self.isConnected = false
