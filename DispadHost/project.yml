@@ -21,6 +21,11 @@ targets:
       - path: DispadHost/LaunchAgent/com.dispad.host.plist
         type: file
         buildPhase: resources
+      - path: ../ThirdParty/Peertalk/peertalk
+        type: group
+        excludes:
+          - "*.md"
+          - "Info.plist"
     dependencies:
       - package: DispadProtocol
     entitlements:
@@ -43,3 +48,7 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: ""
+        SWIFT_OBJC_BRIDGING_HEADER: DispadHost/DispadHost-Bridging-Header.h
+        CLANG_ENABLE_MODULES: YES
+        GCC_PREPROCESSOR_DEFINITIONS: "$(inherited) COCOAPODS=0"
+        HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/../ThirdParty/Peertalk"
