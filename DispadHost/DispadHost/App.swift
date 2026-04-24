@@ -41,6 +41,7 @@ final class HostCoordinator: ObservableObject {
 
     init() {
         transport.onMessage = { [weak self] message in
+            print("HostCoordinator: received \(message)")
             if case .hello = message {
                 Task { @MainActor in self?.start() }
             }
@@ -64,7 +65,11 @@ final class HostCoordinator: ObservableObject {
     }
 
     func start() {
-        guard case .waitingForClient = state else { return }
+        print("HostCoordinator.start(): current state = \(state)")
+        guard case .waitingForClient = state else {
+            print("HostCoordinator.start(): not in waitingForClient, ignoring")
+            return
+        }
 
         // Capture non-isolated references so callbacks invoked off the MainActor
         // (VideoToolbox output thread, capture dispatch queue) don't touch
@@ -73,6 +78,7 @@ final class HostCoordinator: ObservableObject {
         let transport = self.transport
 
         encoder.onFrame = { frame in
+            print("HostCoordinator: encoder emitted frame keyframe=\(frame.isKeyframe) nalus=\(frame.nalus.count)B parameterSets=\(frame.parameterSets?.count ?? 0)B")
             if let ps = frame.parameterSets {
                 Task { try? await transport.send(.config(parameterSets: ps)) }
             }
@@ -93,9 +99,12 @@ final class HostCoordinator: ObservableObject {
 
         Task {
             do {
+                print("HostCoordinator: starting capture")
                 try await capture.start()
+                print("HostCoordinator: capture started")
                 self.state = .streaming
             } catch {
+                print("HostCoordinator: capture failed: \(error)")
                 self.state = .error(String(describing: error))
             }
         }
