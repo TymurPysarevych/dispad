@@ -65,13 +65,32 @@ final class ClientCoordinator: ObservableObject {
         case let .videoFrame(isKeyframe: _, pts, naluData):
             guard let format = formatDescription else { return }
             guard let sample = makeSampleBuffer(nalus: naluData, pts: pts, format: format) else { return }
+            markDisplayImmediately(sample)
             if displayLayer.isReadyForMoreMediaData {
+                displayLayer.enqueue(sample)
+            } else {
+                displayLayer.flush()
                 displayLayer.enqueue(sample)
             }
 
         case .hello, .heartbeat:
             break
         }
+    }
+
+    /// Tags a sample so `AVSampleBufferDisplayLayer` renders it on arrival
+    /// rather than comparing its PTS against the layer's internal clock.
+    /// Without this, only the first frame renders because subsequent PTS
+    /// values look "in the future" relative to the layer's timebase.
+    private func markDisplayImmediately(_ sample: CMSampleBuffer) {
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: true) else { return }
+        guard CFArrayGetCount(attachments) > 0 else { return }
+        let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0), to: CFMutableDictionary.self)
+        CFDictionarySetValue(
+            dict,
+            Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
+            Unmanaged.passUnretained(kCFBooleanTrue).toOpaque()
+        )
     }
 
     private func makeSampleBuffer(nalus: Data, pts: UInt64, format: CMFormatDescription) -> CMSampleBuffer? {
