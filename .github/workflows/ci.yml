@@ -34,7 +34,7 @@ jobs:
       - name: xcodebuild
         run: |
           xcodebuild \
-            -project DispadHost/DispadHost.xcodeproj \
+            -workspace Dispad.xcworkspace \
             -scheme DispadHost \
             -configuration Debug \
             -destination 'platform=macOS' \
@@ -57,7 +57,7 @@ jobs:
       - name: xcodebuild
         run: |
           xcodebuild \
-            -project DispadClient/DispadClient.xcodeproj \
+            -workspace Dispad.xcworkspace \
             -scheme DispadClient \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \

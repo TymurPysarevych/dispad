@@ -22,7 +22,7 @@
 git clone https://github.com/<you>/dispad.git
 cd dispad
 ./scripts/bootstrap.sh          # installs XcodeGen and generates Xcode projects
-open DispadHost/DispadHost.xcodeproj
+open Dispad.xcworkspace
 ```
 
 In Xcode, select the `DispadHost` scheme and hit Run.
@@ -33,7 +33,7 @@ Apple does not let us distribute iOS apps outside the App Store without a paid d
 
 1. On a Mac with Xcode 15+, clone the repo.
 2. Run `./scripts/bootstrap.sh` (installs XcodeGen and generates the Xcode projects from their `project.yml` specs).
-3. Open `DispadClient/DispadClient.xcodeproj`.
+3. Open `Dispad.xcworkspace` (not the individual `.xcodeproj` files). The workspace hosts both apps plus the shared `DispadProtocol` Swift package.
 4. Connect your iPad by USB-C and trust the Mac when prompted on the iPad.
 5. Select your iPad as the run destination.
 6. In the project settings → Signing & Capabilities:

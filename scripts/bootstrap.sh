@@ -25,6 +25,10 @@ echo "Generating DispadClient.xcodeproj..."
 (cd DispadClient && xcodegen generate)
 
 echo
-echo "Done. Open the projects in Xcode:"
-echo "  open DispadHost/DispadHost.xcodeproj"
-echo "  open DispadClient/DispadClient.xcodeproj"
+echo "Done. Open the workspace in Xcode (not the individual .xcodeproj files):"
+echo "  open Dispad.xcworkspace"
+echo
+echo "The workspace hosts both apps plus the shared DispadProtocol Swift package."
+echo "Opening an individual .xcodeproj will fail with a 'package already opened"
+echo "from another project' error, because two .xcodeproj files cannot share a"
+echo "local Swift package directly — that's what the workspace is for."
