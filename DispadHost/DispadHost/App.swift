@@ -49,7 +49,8 @@ final class FrameCounter {
         if elapsed >= 1.0 {
             let fps = Double(frames) / elapsed
             let mbps = Double(self.bytes * 8) / elapsed / 1_000_000
-            print(String(format: "HostCoordinator: %.1f fps, %.1f Mbps", fps, mbps))
+            let message = String(format: "HostCoordinator: %.1f fps, %.1f Mbps", fps, mbps)
+            Log.stats.info("\(message, privacy: .public)")
             frames = 0
             self.bytes = 0
             windowStart = now
@@ -67,7 +68,7 @@ final class HostCoordinator: ObservableObject {
 
     init() {
         transport.onMessage = { [weak self] message in
-            print("HostCoordinator: received \(message)")
+            Log.pipeline.debug("received \(String(describing: message), privacy: .public)")
             if case .hello = message {
                 Task { @MainActor in self?.start() }
             }
@@ -85,15 +86,15 @@ final class HostCoordinator: ObservableObject {
             do {
                 try await transport.send(.heartbeat)
             } catch {
-                print("DispadHost send heartbeat failed: \(error)")
+                Log.transport.error("DispadHost send heartbeat failed: \(error, privacy: .public)")
             }
         }
     }
 
     func start() {
-        print("HostCoordinator.start(): current state = \(state)")
+        Log.pipeline.info("HostCoordinator.start(): current state = \(String(describing: self.state), privacy: .public)")
         guard case .waitingForClient = state else {
-            print("HostCoordinator.start(): not in waitingForClient, ignoring")
+            Log.pipeline.info("HostCoordinator.start(): not in waitingForClient, ignoring")
             return
         }
 
@@ -130,12 +131,12 @@ final class HostCoordinator: ObservableObject {
 
         Task {
             do {
-                print("HostCoordinator: starting capture")
+                Log.pipeline.info("HostCoordinator: starting capture")
                 try await capture.start()
-                print("HostCoordinator: capture started")
+                Log.pipeline.info("HostCoordinator: capture started")
                 self.state = .streaming
             } catch {
-                print("HostCoordinator: capture failed: \(error)")
+                Log.pipeline.error("HostCoordinator: capture failed: \(error, privacy: .public)")
                 self.state = .error(String(describing: error))
             }
         }

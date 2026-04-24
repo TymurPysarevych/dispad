@@ -55,7 +55,7 @@ final class TransportServer: ObservableObject {
                     self.onMessage?(message)
                 }
             } catch {
-                print("TransportServer decode error: \(error)")
+                Log.transport.error("TransportServer decode error: \(error, privacy: .public)")
             }
         }
     }

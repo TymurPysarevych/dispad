@@ -25,7 +25,7 @@ final class CaptureEngine: NSObject, SCStreamOutput {
         config.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
         config.queueDepth = 6
         config.showsCursor = true
-        print("CaptureEngine: starting at \(config.width)x\(config.height) @ up to 60fps")
+        Log.capture.info("CaptureEngine: starting at \(config.width, privacy: .public)x\(config.height, privacy: .public) @ up to 60fps")
 
         let stream = SCStream(filter: filter, configuration: config, delegate: nil)
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)

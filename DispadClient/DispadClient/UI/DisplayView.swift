@@ -157,9 +157,10 @@ final class ClientFrameCounter {
         let now = CFAbsoluteTimeGetCurrent()
         let elapsed = now - windowStart
         if elapsed >= 1.0 {
-            print(String(format: "DispadClient: %.1f fps received, %.1f fps enqueued",
-                         Double(received) / elapsed,
-                         Double(enqueued) / elapsed))
+            let message = String(format: "DispadClient: %.1f fps received, %.1f fps enqueued",
+                                 Double(received) / elapsed,
+                                 Double(enqueued) / elapsed)
+            Log.stats.info("\(message, privacy: .public)")
             received = 0
             enqueued = 0
             windowStart = now

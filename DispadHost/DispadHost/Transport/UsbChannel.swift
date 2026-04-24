@@ -109,9 +109,9 @@ actor UsbChannel {
             let serial = (props?["SerialNumber"] as? String) ?? "unknown"
             let productID = (props?["ProductID"] as? NSNumber)?.stringValue ?? "?"
             let locationID = (props?["LocationID"] as? NSNumber)?.stringValue ?? "?"
-            print("UsbChannel: deviceDidAttach id=\(id?.stringValue ?? "nil") type=\(connectionType) productID=\(productID) location=\(locationID) serial=\(serial)")
+            Log.transport.info("UsbChannel: deviceDidAttach id=\(id?.stringValue ?? "nil", privacy: .public) type=\(connectionType, privacy: .public) productID=\(productID, privacy: .public) location=\(locationID, privacy: .public) serial=\(serial, privacy: .public)")
             guard connectionType == "USB" else {
-                print("UsbChannel: skipping non-USB device (type=\(connectionType))")
+                Log.transport.info("UsbChannel: skipping non-USB device (type=\(connectionType, privacy: .public))")
                 return
             }
             Task { await self.handleAttach(deviceID: id) }
@@ -124,44 +124,44 @@ actor UsbChannel {
         ) { [weak self] note in
             guard let self else { return }
             let id = note.userInfo?[PTUSBHubNotificationKey.deviceID] as? NSNumber
-            print("UsbChannel: deviceDidDetach id=\(id?.stringValue ?? "nil")")
+            Log.transport.info("UsbChannel: deviceDidDetach id=\(id?.stringValue ?? "nil", privacy: .public)")
             Task { await self.handleDetach(deviceID: id) }
         }
 
         let hub = PTUSBHub.shared()
         self.hub = hub
-        print("UsbChannel: hub listening on port \(port)")
+        Log.transport.info("UsbChannel: hub listening on port \(self.port, privacy: .public)")
     }
 
     private func handleAttach(deviceID: NSNumber?) {
         guard let deviceID, self.deviceID == nil, let hub = self.hub else { return }
         self.deviceID = deviceID
 
-        print("UsbChannel: attempting raw connect to device \(deviceID) on port \(port)")
+        Log.transport.info("UsbChannel: attempting raw connect to device \(deviceID, privacy: .public) on port \(self.port, privacy: .public)")
         hub.connect(
             toDevice: deviceID,
             port: Int32(port),
             onStart: { [weak self] error, rawIO in
                 guard let self else { return }
                 if let error {
-                    print("UsbChannel: connect failed: \(error)")
+                    Log.transport.error("UsbChannel: connect failed: \(error, privacy: .public)")
                     Task { await self.teardown(emitDisconnected: false) }
                     return
                 }
                 guard let rawIO else {
-                    print("UsbChannel: connect returned nil io channel")
+                    Log.transport.error("UsbChannel: connect returned nil io channel")
                     Task { await self.teardown(emitDisconnected: false) }
                     return
                 }
-                print("UsbChannel: raw io channel ready")
+                Log.transport.info("UsbChannel: raw io channel ready")
                 Task { await self.attachIO(rawIO) }
             },
             onEnd: { [weak self] error in
                 guard let self else { return }
                 if let error {
-                    print("UsbChannel: onEnd with error: \(error)")
+                    Log.transport.error("UsbChannel: onEnd with error: \(error, privacy: .public)")
                 } else {
-                    print("UsbChannel: onEnd clean")
+                    Log.transport.info("UsbChannel: onEnd clean")
                 }
                 Task { await self.teardown(emitDisconnected: true) }
             }
@@ -184,22 +184,22 @@ actor UsbChannel {
         // In Swift we reach SIZE_MAX by bit-reinterpreting UInt.max as Int.
         let sizeMax = Int(bitPattern: UInt.max)
 
-        print("UsbChannel: starting read loop on ioQueue (length=SIZE_MAX)")
+        Log.transport.info("UsbChannel: starting read loop on ioQueue (length=SIZE_MAX)")
         rawIO.read(offset: 0, length: sizeMax, queue: ioQueue) { [weak self] done, data, error in
             guard let self else { return }
             let dataCount = data?.count ?? 0
-            print("UsbChannel: read fire done=\(done) bytes=\(dataCount) error=\(error)")
+            Log.transport.debug("UsbChannel: read fire done=\(done, privacy: .public) bytes=\(dataCount, privacy: .public) error=\(error, privacy: .public)")
             if let data, !data.isEmpty {
                 let bytes = Data(data)
                 Task { await self.deliverReceived(bytes) }
             }
             if error != 0 {
-                print("UsbChannel: read error: \(error)")
+                Log.transport.error("UsbChannel: read error: \(error, privacy: .public)")
                 Task { await self.teardown(emitDisconnected: true) }
                 return
             }
             if done {
-                print("UsbChannel: read done (EOF)")
+                Log.transport.info("UsbChannel: read done (EOF)")
                 Task { await self.teardown(emitDisconnected: true) }
             }
         }

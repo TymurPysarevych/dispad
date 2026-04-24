@@ -29,18 +29,18 @@ final class TransportClient: ObservableObject {
             self.listener = listener
 
             listener.stateUpdateHandler = { state in
-                print("TransportClient listener state: \(state)")
+                Log.transport.info("TransportClient listener state: \(String(describing: state), privacy: .public)")
             }
             listener.newConnectionHandler = { [weak self] connection in
-                print("TransportClient: new connection from \(connection.endpoint)")
+                Log.transport.info("TransportClient: new connection from \(String(describing: connection.endpoint), privacy: .public)")
                 Task { @MainActor in
                     self?.accept(connection)
                 }
             }
             listener.start(queue: queue)
-            print("TransportClient: starting listener on port \(port.rawValue)")
+            Log.transport.info("TransportClient: starting listener on port \(port.rawValue, privacy: .public)")
         } catch {
-            print("TransportClient listener failed: \(error)")
+            Log.transport.error("TransportClient listener failed: \(error, privacy: .public)")
         }
     }
 
@@ -87,7 +87,7 @@ final class TransportClient: ObservableObject {
 
         connection.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
-            print("TransportClient connection state: \(state)")
+            Log.transport.info("TransportClient connection state: \(String(describing: state), privacy: .public)")
             Task { @MainActor in
                 switch state {
                 case .ready:
@@ -100,9 +100,9 @@ final class TransportClient: ObservableObject {
                     Task {
                         do {
                             try await self.send(hello)
-                            print("TransportClient: hello sent")
+                            Log.transport.info("TransportClient: hello sent")
                         } catch {
-                            print("TransportClient hello send failed: \(error)")
+                            Log.transport.error("TransportClient hello send failed: \(error, privacy: .public)")
                         }
                     }
                 case .failed, .cancelled:
@@ -125,7 +125,7 @@ final class TransportClient: ObservableObject {
                 onMessage?(message)
             }
         } catch {
-            print("TransportClient decode error: \(error)")
+            Log.transport.error("TransportClient decode error: \(error, privacy: .public)")
             connection.cancel()
             byteContinuation?.finish()
             reader = FrameReader()
