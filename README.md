@@ -1,5 +1,12 @@
 # dispad
 
+<p align="center">
+  <!-- Record a 10-second GIF showing the iPad mirroring the Mac, drop it into docs/assets/demo.gif, and uncomment:
+  <img src="docs/assets/demo.gif" alt="Demo of dispad mirroring a Mac to an iPad over USB-C" width="600">
+  -->
+  <em>Demo GIF pending — contributions welcome.</em>
+</p>
+
 Use an iPad as the primary display for a headless Mac mini, over a USB-C cable.
 
 ## Why
@@ -31,8 +38,8 @@ DispadClient.app on the iPad:
 
 1. Download the latest `DispadHost.dmg` from [Releases](../../releases).
 2. Drag `DispadHost.app` to `/Applications`.
-3. On first launch, grant Screen Recording permission in System Settings → Privacy & Security.
-4. The app installs a LaunchAgent that auto-starts it at login.
+3. Launch DispadHost. On first launch a welcome sheet appears — click **Install auto-launch** to register a LaunchAgent so the app starts at every login. Click Skip if you don't want auto-launch.
+4. Grant Screen Recording permission in System Settings → Privacy & Security.
 
 The build is unsigned. If macOS refuses to open it, run:
 
@@ -58,7 +65,7 @@ See [`docs/installation.md`](docs/installation.md) for troubleshooting.
 
 ## Usage
 
-1. Boot the Mac mini (no monitor needed; log in blindly).
+1. Boot the Mac mini (no monitor needed; log in blindly). If you installed auto-launch during setup, DispadHost starts automatically on login.
 2. Launch `DispadClient` on your iPad.
 3. Connect the iPad to the Mac with a USB-C cable.
 4. The connection establishes automatically. The iPad shows the Mac's screen.
