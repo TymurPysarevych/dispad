@@ -28,23 +28,29 @@ final class HEVCDecoder {
         let parsed = try splitAVCCParameterSets(parameterSets)
         guard !parsed.isEmpty else { throw DecoderError.noParameterSets }
 
-        // We must keep the parameter-set Data alive for the duration of
-        // the Create call, since CMVideoFormatDescriptionCreateFromHEVCParameterSets
-        // takes raw pointers into the buffers.
-        var pointers: [UnsafePointer<UInt8>] = []
-        var sizes: [Int] = []
-        for data in parsed {
-            data.withUnsafeBytes { buf in
-                if let base = buf.baseAddress {
-                    pointers.append(base.assumingMemoryBound(to: UInt8.self))
-                    sizes.append(buf.count)
+        // Copy each parameter set into a heap buffer we own. Pointers
+        // captured from Data.withUnsafeBytes are only guaranteed valid
+        // inside that closure; CMVideoFormatDescriptionCreateFromHEVCParameterSets
+        // requires stable pointers that outlive the closure, so we make
+        // our own. `defer` deallocates regardless of success or error.
+        let heapBuffers: [UnsafeMutablePointer<UInt8>] = parsed.map { data in
+            let buf = UnsafeMutablePointer<UInt8>.allocate(capacity: data.count)
+            data.withUnsafeBytes { rawBuf in
+                if let base = rawBuf.baseAddress {
+                    buf.update(from: base.assumingMemoryBound(to: UInt8.self), count: data.count)
                 }
             }
+            return buf
         }
-        guard pointers.count == parsed.count else { throw DecoderError.formatCreationFailed(-1) }
+        defer {
+            for p in heapBuffers { p.deallocate() }
+        }
+
+        let sizes: [Int] = parsed.map { $0.count }
+        let constPointers: [UnsafePointer<UInt8>] = heapBuffers.map { UnsafePointer($0) }
 
         var format: CMFormatDescription?
-        let status = pointers.withUnsafeBufferPointer { p in
+        let status = constPointers.withUnsafeBufferPointer { p in
             sizes.withUnsafeBufferPointer { s in
                 CMVideoFormatDescriptionCreateFromHEVCParameterSets(
                     allocator: nil,
