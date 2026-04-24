@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import AVFoundation
+import DispadProtocol
 
 struct DisplayView: UIViewRepresentable {
     let displayLayer: AVSampleBufferDisplayLayer
@@ -41,11 +42,22 @@ final class ClientCoordinator: ObservableObject {
     private let decoder = HEVCDecoder()
     private let transport = TransportClient()
 
+    init() {
+        displayLayer.videoGravity = .resizeAspect
+        transport.onMessage = { [weak self] message in
+            self?.handle(message)
+        }
+    }
+
     func start() {
-        // TODO: wire transport → decoder → displayLayer pipeline
+        transport.start()
     }
 
     func stop() {
-        // TODO: tear down pipeline
+        transport.stop()
+    }
+
+    private func handle(_ message: Message) {
+        print("DispadClient received: \(message)")
     }
 }

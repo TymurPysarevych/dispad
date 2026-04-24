@@ -7,6 +7,8 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 10) {
             statusRow
             Divider()
+            Button("Send test heartbeat") { coordinator.sendTest() }
+            Divider()
             Button("Open log file") {
                 NSWorkspace.shared.open(URL(fileURLWithPath: "/tmp/dispad-host.log"))
             }

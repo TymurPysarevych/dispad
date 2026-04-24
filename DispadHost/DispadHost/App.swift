@@ -1,4 +1,5 @@
 import SwiftUI
+import DispadProtocol
 
 @main
 struct DispadHostApp: App {
@@ -35,6 +36,25 @@ final class HostCoordinator: ObservableObject {
     private let capture = CaptureEngine()
     private let encoder = HEVCEncoder()
     private let transport = TransportServer()
+
+    init() {
+        startTransport()
+    }
+
+    func startTransport() {
+        transport.start()
+        state = .waitingForClient
+    }
+
+    func sendTest() {
+        Task {
+            do {
+                try await transport.send(.heartbeat)
+            } catch {
+                print("DispadHost send heartbeat failed: \(error)")
+            }
+        }
+    }
 
     func start() {
         // TODO: wire capture → encoder → transport pipeline
