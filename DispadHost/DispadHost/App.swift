@@ -6,12 +6,26 @@ import DispadProtocol
 @main
 struct DispadHostApp: App {
     @StateObject private var coordinator = HostCoordinator()
+    @State private var showWelcome: Bool = !UserDefaults.standard.bool(forKey: "com.dispad.host.welcomeSeen")
+        && !LaunchAgentInstaller.isInstalled
 
     var body: some Scene {
         MenuBarExtra("dispad", systemImage: statusIcon(for: coordinator.state)) {
             MenuBarView(coordinator: coordinator)
         }
         .menuBarExtraStyle(.window)
+
+        Window("Welcome to dispad", id: "welcome") {
+            if showWelcome {
+                WelcomeSheet()
+                    .onDisappear { showWelcome = false }
+            } else {
+                EmptyView()
+                    .frame(width: 1, height: 1)
+            }
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
     }
 
     private func statusIcon(for state: HostState) -> String {
