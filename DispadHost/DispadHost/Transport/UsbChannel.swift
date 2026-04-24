@@ -113,7 +113,19 @@ actor UsbChannel {
         ) { [weak self] note in
             guard let self else { return }
             let id = note.userInfo?[PTUSBHubNotificationKey.deviceID] as? NSNumber
-            print("UsbChannel: deviceDidAttach id=\(id?.stringValue ?? "nil")")
+
+            // Xcode pairs iPads over both USB and Wi-Fi. usbmuxd exposes each
+            // pairing as a separate device ID, and connecting to the Wi-Fi
+            // one over our "USB" transport routes somewhere useless. Filter
+            // to ConnectionType == "USB" so we only ever grab the wired path.
+            let props = note.userInfo?[PTUSBHubNotificationKey.properties] as? [String: Any]
+            let connectionType = props?["ConnectionType"] as? String ?? "unknown"
+            print("UsbChannel: deviceDidAttach id=\(id?.stringValue ?? "nil") type=\(connectionType)")
+
+            guard connectionType == "USB" else {
+                print("UsbChannel: skipping non-USB device (type=\(connectionType))")
+                return
+            }
             Task { await self.handleAttach(deviceID: id) }
         }
 
