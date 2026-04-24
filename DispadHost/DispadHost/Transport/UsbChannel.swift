@@ -1,12 +1,18 @@
 import Foundation
+import Dispatch
 import DispadProtocol
 
-/// Swift-friendly async wrapper around Peertalk's Objective-C callback API.
+/// Swift-friendly async wrapper around Peertalk's Objective-C USB API.
 ///
 /// Exposes a single `AsyncStream<Event>` for connection lifecycle and incoming
-/// frames, plus `send(_:)` / `stop()` for producers. The actor owns the
-/// `PTUSBHub`/`PTChannel`/delegate-proxy lifetime and serializes all mutations
-/// of that state.
+/// raw bytes, plus `send(_:)` / `stop()` for producers.
+///
+/// Implementation detail: we use `PTUSBHub.connectToDevice(port:onStart:onEnd:)`
+/// which gives a raw `DispatchIO` channel over the usbmuxd tunnel, then do
+/// plain read/write on it. We deliberately do NOT use `PTChannel`, because
+/// `PTChannel` wraps every send in Peertalk's own framing (type, tag, length
+/// header) which expects the peer to also be running Peertalk. Our iPad side
+/// is plain `NWConnection` and would reject those framed bytes.
 actor UsbChannel {
     enum Event {
         case connected
@@ -16,12 +22,13 @@ actor UsbChannel {
 
     enum UsbError: Error {
         case notConnected
+        case writeFailed(Int32)
     }
 
     private let port: UInt32
+    private let ioQueue = DispatchQueue(label: "dispad.usbchannel.io", qos: .userInitiated)
     private var hub: PTUSBHub?
-    private var channel: PTChannel?
-    private var delegateProxy: UsbChannelDelegateProxy?
+    private var io: DispatchIO?
     private var deviceID: NSNumber?
     private var isConnected: Bool = false
 
@@ -33,13 +40,7 @@ actor UsbChannel {
         self.port = port
     }
 
-    /// Starts observing USB attach/detach and emits lifecycle + frame events.
-    ///
-    /// This stream is designed for **single-consumer lifetime use**: calling
-    /// `events()` a second time will `finish()` any previously installed
-    /// continuation, terminating prior streams. Do not share the returned
-    /// stream across multiple concurrent consumers expecting independent
-    /// lifetimes.
+    /// Single-consumer stream of lifecycle + byte events.
     func events() -> AsyncStream<Event> {
         AsyncStream { continuation in
             Task { await self.beginStream(continuation: continuation) }
@@ -50,24 +51,23 @@ actor UsbChannel {
         }
     }
 
-    /// Sends a raw payload as a single Peertalk frame on the active channel.
-    /// Throws `UsbError.notConnected` if no channel is currently connected.
+    /// Writes `data` as raw bytes onto the USB-tunnelled socket.
     func send(_ data: Data) async throws {
-        guard let channel = self.channel, isConnected else {
-            throw UsbError.notConnected
+        guard let io, isConnected else { throw UsbError.notConnected }
+        let dispatchData = data.withUnsafeBytes { ptr -> DispatchData in
+            DispatchData(bytes: UnsafeRawBufferPointer(start: ptr.baseAddress, count: ptr.count))
         }
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            channel.sendFrame(type: 0, tag: 0, payload: data) { error in
-                if let error = error {
-                    cont.resume(throwing: error)
-                } else {
+            io.write(offset: 0, data: dispatchData, queue: ioQueue) { done, _, error in
+                if error != 0 {
+                    cont.resume(throwing: UsbError.writeFailed(error))
+                } else if done {
                     cont.resume()
                 }
             }
         }
     }
 
-    /// Tears down the active channel, observers, and the event stream.
     func stop() {
         if let attachObserver {
             NotificationCenter.default.removeObserver(attachObserver)
@@ -78,9 +78,8 @@ actor UsbChannel {
         attachObserver = nil
         detachObserver = nil
 
-        channel?.close()
-        channel = nil
-        delegateProxy = nil
+        io?.close(flags: [])
+        io = nil
         deviceID = nil
         isConnected = false
         hub = nil
@@ -92,20 +91,12 @@ actor UsbChannel {
     // MARK: - Private
 
     private func beginStream(continuation: AsyncStream<Event>.Continuation) {
-        // Terminate any previously installed continuation so the old stream
-        // is cleanly finished instead of silently orphaned.
         self.continuation?.finish()
         self.continuation = continuation
 
-        // Register observers BEFORE touching the shared hub. Peertalk's
-        // PTUSBHub posts .deviceDidAttach notifications for already-connected
-        // devices when it starts listening (on first access to sharedHub).
-        // If we register after that first access, we miss the retroactive
-        // events for any iPad that was plugged in at app launch.
-        //
-        // object: nil matches any sender, so we don't need the hub to exist
-        // first. There's only one shared hub in-process, so filtering by
-        // object adds nothing.
+        // Register observers BEFORE touching the shared hub so retroactive
+        // attach events (for devices already plugged in at launch) aren't
+        // missed.
         attachObserver = NotificationCenter.default.addObserver(
             forName: .deviceDidAttach,
             object: nil,
@@ -113,15 +104,9 @@ actor UsbChannel {
         ) { [weak self] note in
             guard let self else { return }
             let id = note.userInfo?[PTUSBHubNotificationKey.deviceID] as? NSNumber
-
-            // Xcode pairs iPads over both USB and Wi-Fi. usbmuxd exposes each
-            // pairing as a separate device ID, and connecting to the Wi-Fi
-            // one over our "USB" transport routes somewhere useless. Filter
-            // to ConnectionType == "USB" so we only ever grab the wired path.
             let props = note.userInfo?[PTUSBHubNotificationKey.properties] as? [String: Any]
             let connectionType = props?["ConnectionType"] as? String ?? "unknown"
             print("UsbChannel: deviceDidAttach id=\(id?.stringValue ?? "nil") type=\(connectionType)")
-
             guard connectionType == "USB" else {
                 print("UsbChannel: skipping non-USB device (type=\(connectionType))")
                 return
@@ -140,8 +125,6 @@ actor UsbChannel {
             Task { await self.handleDetach(deviceID: id) }
         }
 
-        // Now touch sharedHub so it starts listening. Any retroactive
-        // attach events fire here and are caught by the observers above.
         let hub = PTUSBHub.shared()
         self.hub = hub
         print("UsbChannel: hub listening on port \(port)")
@@ -151,22 +134,61 @@ actor UsbChannel {
         guard let deviceID, self.deviceID == nil, let hub = self.hub else { return }
         self.deviceID = deviceID
 
-        let proxy = UsbChannelDelegateProxy(owner: self)
-        let channel = PTChannel(protocol: nil, delegate: proxy)
-        self.delegateProxy = proxy
-        self.channel = channel
+        print("UsbChannel: attempting raw connect to device \(deviceID) on port \(port)")
+        hub.connect(
+            toDevice: deviceID,
+            port: Int32(port),
+            onStart: { [weak self] error, rawIO in
+                guard let self else { return }
+                if let error {
+                    print("UsbChannel: connect failed: \(error)")
+                    Task { await self.teardown(emitDisconnected: false) }
+                    return
+                }
+                guard let rawIO else {
+                    print("UsbChannel: connect returned nil io channel")
+                    Task { await self.teardown(emitDisconnected: false) }
+                    return
+                }
+                print("UsbChannel: raw io channel ready")
+                Task { await self.attachIO(rawIO) }
+            },
+            onEnd: { [weak self] error in
+                guard let self else { return }
+                if let error {
+                    print("UsbChannel: onEnd with error: \(error)")
+                } else {
+                    print("UsbChannel: onEnd clean")
+                }
+                Task { await self.teardown(emitDisconnected: true) }
+            }
+        )
+    }
 
-        print("UsbChannel: attempting connect to device \(deviceID) on port \(port)")
-        channel.connect(to: Int32(port), over: hub, deviceID: deviceID) { [weak self] error in
+    private func attachIO(_ rawIO: DispatchIO) {
+        self.io = rawIO
+
+        // One long-running read drains bytes for the life of the channel.
+        // length: Int.max means "read until EOF"; handler fires per chunk
+        // with done:false, and once with done:true at EOF/error.
+        rawIO.read(offset: 0, length: Int.max, queue: ioQueue) { [weak self] done, data, error in
             guard let self else { return }
-            if let error {
-                print("UsbChannel: connect failed: \(error)")
-                Task { await self.teardownChannel(emitDisconnected: false) }
-            } else {
-                print("UsbChannel: connect succeeded")
-                Task { await self.markConnected() }
+            if let data, !data.isEmpty {
+                let bytes = Data(data)
+                Task { await self.deliverReceived(bytes) }
+            }
+            if error != 0 {
+                print("UsbChannel: read error: \(error)")
+                Task { await self.teardown(emitDisconnected: true) }
+                return
+            }
+            if done {
+                print("UsbChannel: read done (EOF)")
+                Task { await self.teardown(emitDisconnected: true) }
             }
         }
+
+        markConnected()
     }
 
     private func markConnected() {
@@ -175,58 +197,27 @@ actor UsbChannel {
     }
 
     private func handleDetach(deviceID: NSNumber?) {
-        // Only react if the detach matches our connected device (or if we
-        // don't yet know which device we're on).
         if let our = self.deviceID, let incoming = deviceID, our != incoming {
             return
         }
-        teardownChannel(emitDisconnected: true)
+        teardown(emitDisconnected: true)
     }
 
-    fileprivate func deliver(_ event: Event) {
-        switch event {
-        case .disconnected:
-            // Route disconnect through teardown so channel state is cleaned.
-            teardownChannel(emitDisconnected: true)
-        default:
-            emit(event)
-        }
+    private func deliverReceived(_ data: Data) {
+        emit(.received(data))
     }
 
     private func emit(_ event: Event) {
         continuation?.yield(event)
     }
 
-    private func teardownChannel(emitDisconnected: Bool) {
-        channel?.close()
-        channel = nil
-        delegateProxy = nil
+    private func teardown(emitDisconnected: Bool) {
+        io?.close(flags: [])
+        io = nil
         deviceID = nil
         isConnected = false
         if emitDisconnected {
             emit(.disconnected)
         }
-    }
-}
-
-/// Bridges Peertalk's Objective-C delegate callbacks back into the actor.
-///
-/// Held strongly by `UsbChannel` while a channel is open; `PTChannel` holds
-/// the delegate weakly (see `PTChannel.h`), so dropping the proxy reference
-/// in the actor is what releases it.
-private final class UsbChannelDelegateProxy: NSObject, PTChannelDelegate {
-    weak var owner: UsbChannel?
-
-    init(owner: UsbChannel) {
-        self.owner = owner
-    }
-
-    func channel(_ channel: PTChannel, didRecieveFrame type: UInt32, tag: UInt32, payload: Data?) {
-        guard let payload else { return }
-        Task { [weak self] in await self?.owner?.deliver(.received(payload)) }
-    }
-
-    func channelDidEnd(_ channel: PTChannel, error: Error?) {
-        Task { [weak self] in await self?.owner?.deliver(.disconnected) }
     }
 }
