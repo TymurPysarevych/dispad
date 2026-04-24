@@ -39,8 +39,8 @@ final class ClientCoordinator: ObservableObject {
     @Published var state: ClientState = .waitingForHost
     let displayLayer = AVSampleBufferDisplayLayer()
 
-    private let decoder = HEVCDecoder()
     private let transport = TransportClient()
+    private var formatDescription: CMFormatDescription?
 
     init() {
         displayLayer.videoGravity = .resizeAspect
@@ -49,15 +49,76 @@ final class ClientCoordinator: ObservableObject {
         }
     }
 
-    func start() {
-        transport.start()
-    }
-
-    func stop() {
-        transport.stop()
-    }
+    func start() { transport.start() }
+    func stop()  { transport.stop() }
 
     private func handle(_ message: Message) {
-        print("DispadClient received: \(message)")
+        switch message {
+        case let .config(parameterSets):
+            do {
+                formatDescription = try HEVCDecoder.makeFormatDescription(from: parameterSets)
+                state = .connected
+            } catch {
+                state = .error("Bad parameter sets: \(error)")
+            }
+
+        case let .videoFrame(isKeyframe: _, pts, naluData):
+            guard let format = formatDescription else { return }
+            guard let sample = makeSampleBuffer(nalus: naluData, pts: pts, format: format) else { return }
+            if displayLayer.isReadyForMoreMediaData {
+                displayLayer.enqueue(sample)
+            }
+
+        case .hello, .heartbeat:
+            break
+        }
+    }
+
+    private func makeSampleBuffer(nalus: Data, pts: UInt64, format: CMFormatDescription) -> CMSampleBuffer? {
+        var blockBuffer: CMBlockBuffer?
+        let blockStatus = CMBlockBufferCreateWithMemoryBlock(
+            allocator: kCFAllocatorDefault,
+            memoryBlock: nil,
+            blockLength: nalus.count,
+            blockAllocator: kCFAllocatorDefault,
+            customBlockSource: nil,
+            offsetToData: 0,
+            dataLength: nalus.count,
+            flags: 0,
+            blockBufferOut: &blockBuffer
+        )
+        guard blockStatus == noErr, let blockBuffer else { return nil }
+
+        let copyStatus = nalus.withUnsafeBytes { (rawBuf: UnsafeRawBufferPointer) -> OSStatus in
+            guard let base = rawBuf.baseAddress else { return -1 }
+            return CMBlockBufferReplaceDataBytes(
+                with: base,
+                blockBuffer: blockBuffer,
+                offsetIntoDestination: 0,
+                dataLength: rawBuf.count
+            )
+        }
+        guard copyStatus == noErr else { return nil }
+
+        var sample: CMSampleBuffer?
+        var size = nalus.count
+        var timing = CMSampleTimingInfo(
+            duration: CMTime(value: 1, timescale: 60),
+            presentationTimeStamp: CMTime(value: CMTimeValue(pts), timescale: 1_000_000_000),
+            decodeTimeStamp: .invalid
+        )
+        let status = CMSampleBufferCreateReady(
+            allocator: kCFAllocatorDefault,
+            dataBuffer: blockBuffer,
+            formatDescription: format,
+            sampleCount: 1,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleSizeEntryCount: 1,
+            sampleSizeArray: &size,
+            sampleBufferOut: &sample
+        )
+        guard status == noErr else { return nil }
+        return sample
     }
 }
