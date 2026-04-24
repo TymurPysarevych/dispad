@@ -22,7 +22,8 @@ actor UsbChannel {
 
     enum UsbError: Error {
         case notConnected
-        case writeFailed(Int32)
+        case channelClosed
+        case writeFailed(errno: Int32)
     }
 
     private let port: UInt32
@@ -53,14 +54,15 @@ actor UsbChannel {
 
     /// Writes `data` as raw bytes onto the USB-tunnelled socket.
     func send(_ data: Data) async throws {
-        guard let io, isConnected else { throw UsbError.notConnected }
+        guard let io else { throw UsbError.notConnected }
+        guard isConnected else { throw UsbError.channelClosed }
         let dispatchData = data.withUnsafeBytes { ptr -> DispatchData in
             DispatchData(bytes: UnsafeRawBufferPointer(start: ptr.baseAddress, count: ptr.count))
         }
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             io.write(offset: 0, data: dispatchData, queue: ioQueue) { done, _, error in
                 if error != 0 {
-                    cont.resume(throwing: UsbError.writeFailed(error))
+                    cont.resume(throwing: UsbError.writeFailed(errno: error))
                 } else if done {
                     cont.resume()
                 }
