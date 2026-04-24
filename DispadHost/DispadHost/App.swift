@@ -31,6 +31,32 @@ enum HostState {
     case error(String)
 }
 
+/// Tiny thread-safe sliding-window FPS + bytes/sec reporter. `tick(bytes:)`
+/// is called once per encoded frame from the VideoToolbox output thread.
+/// Prints a summary once per second.
+final class FrameCounter {
+    private let lock = NSLock()
+    private var windowStart = CFAbsoluteTimeGetCurrent()
+    private var frames = 0
+    private var bytes = 0
+
+    func tick(bytes: Int) {
+        lock.lock(); defer { lock.unlock() }
+        frames += 1
+        self.bytes += bytes
+        let now = CFAbsoluteTimeGetCurrent()
+        let elapsed = now - windowStart
+        if elapsed >= 1.0 {
+            let fps = Double(frames) / elapsed
+            let mbps = Double(self.bytes * 8) / elapsed / 1_000_000
+            print(String(format: "HostCoordinator: %.1f fps, %.1f Mbps", fps, mbps))
+            frames = 0
+            self.bytes = 0
+            windowStart = now
+        }
+    }
+}
+
 @MainActor
 final class HostCoordinator: ObservableObject {
     @Published var state: HostState = .idle
@@ -77,8 +103,13 @@ final class HostCoordinator: ObservableObject {
         let encoder = self.encoder
         let transport = self.transport
 
+        // Simple 1-second sliding FPS + throughput counter for the encoder
+        // output. Logged once per second so we can see actual rate without
+        // flooding the console on every frame.
+        let counter = FrameCounter()
+
         encoder.onFrame = { frame in
-            print("HostCoordinator: encoder emitted frame keyframe=\(frame.isKeyframe) nalus=\(frame.nalus.count)B parameterSets=\(frame.parameterSets?.count ?? 0)B")
+            counter.tick(bytes: frame.nalus.count)
             if let ps = frame.parameterSets {
                 Task { try? await transport.send(.config(parameterSets: ps)) }
             }

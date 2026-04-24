@@ -68,10 +68,11 @@ final class ClientCoordinator: ObservableObject {
             markDisplayImmediately(sample)
             if displayLayer.isReadyForMoreMediaData {
                 displayLayer.enqueue(sample)
-            } else {
-                displayLayer.flush()
-                displayLayer.enqueue(sample)
             }
+            // If the layer isn't ready, drop the frame. Flushing every
+            // back-pressure tick tears down the decoder pipeline and
+            // causes stutter; dropping lets the decoder catch up and
+            // the next keyframe resyncs the picture cleanly.
 
         case .hello, .heartbeat:
             break
