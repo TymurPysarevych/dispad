@@ -138,6 +138,6 @@ extension Data {
         let start = index(startIndex, offsetBy: offset)
         let end = index(start, offsetBy: MemoryLayout<T>.size)
         let slice = self[start..<end]
-        return slice.withUnsafeBytes { $0.load(as: T.self).bigEndian }
+        return slice.withUnsafeBytes { $0.loadUnaligned(as: T.self).bigEndian }
     }
 }
