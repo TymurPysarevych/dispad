@@ -23,6 +23,7 @@ actor UsbChannel {
     private var channel: PTChannel?
     private var delegateProxy: UsbChannelDelegateProxy?
     private var deviceID: NSNumber?
+    private var isConnected: Bool = false
 
     private var continuation: AsyncStream<Event>.Continuation?
     private var attachObserver: NSObjectProtocol?
@@ -33,7 +34,12 @@ actor UsbChannel {
     }
 
     /// Starts observing USB attach/detach and emits lifecycle + frame events.
-    /// Calling this more than once replaces the previous stream.
+    ///
+    /// This stream is designed for **single-consumer lifetime use**: calling
+    /// `events()` a second time will `finish()` any previously installed
+    /// continuation, terminating prior streams. Do not share the returned
+    /// stream across multiple concurrent consumers expecting independent
+    /// lifetimes.
     func events() -> AsyncStream<Event> {
         AsyncStream { continuation in
             Task { await self.beginStream(continuation: continuation) }
@@ -47,7 +53,9 @@ actor UsbChannel {
     /// Sends a raw payload as a single Peertalk frame on the active channel.
     /// Throws `UsbError.notConnected` if no channel is currently connected.
     func send(_ data: Data) async throws {
-        guard let channel = self.channel else { throw UsbError.notConnected }
+        guard let channel = self.channel, isConnected else {
+            throw UsbError.notConnected
+        }
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             channel.sendFrame(type: 0, tag: 0, payload: data) { error in
                 if let error = error {
@@ -74,6 +82,7 @@ actor UsbChannel {
         channel = nil
         delegateProxy = nil
         deviceID = nil
+        isConnected = false
         hub = nil
 
         continuation?.finish()
@@ -83,6 +92,9 @@ actor UsbChannel {
     // MARK: - Private
 
     private func beginStream(continuation: AsyncStream<Event>.Continuation) {
+        // Terminate any previously installed continuation so the old stream
+        // is cleanly finished instead of silently orphaned.
+        self.continuation?.finish()
         self.continuation = continuation
 
         let hub = PTUSBHub.shared()
@@ -123,9 +135,14 @@ actor UsbChannel {
             if error != nil {
                 Task { await self.teardownChannel(emitDisconnected: false) }
             } else {
-                Task { await self.emit(.connected) }
+                Task { await self.markConnected() }
             }
         }
+    }
+
+    private func markConnected() {
+        isConnected = true
+        emit(.connected)
     }
 
     private func handleDetach(deviceID: NSNumber?) {
@@ -156,6 +173,7 @@ actor UsbChannel {
         channel = nil
         delegateProxy = nil
         deviceID = nil
+        isConnected = false
         if emitDisconnected {
             emit(.disconnected)
         }
