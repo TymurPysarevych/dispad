@@ -20,6 +20,9 @@ final class TransportClient: ObservableObject {
     private var byteContinuation: AsyncStream<Data>.Continuation?
     private var consumerTask: Task<Void, Never>?
 
+    private var outboundContinuation: AsyncStream<Message>.Continuation?
+    private var outboundTask: Task<Void, Never>?
+
     func start() {
         do {
             let params = NWParameters.tcp
@@ -39,20 +42,54 @@ final class TransportClient: ObservableObject {
             }
             listener.start(queue: queue)
             Log.transport.info("TransportClient: starting listener on port \(port.rawValue, privacy: .public)")
+
+            let (stream, continuation) = AsyncStream<Message>.makeStream(bufferingPolicy: .unbounded)
+            self.outboundContinuation = continuation
+            outboundTask = Task { [weak self] in
+                guard let self else { return }
+                for await message in stream {
+                    await self.deliverOutbound(message)
+                }
+            }
         } catch {
             Log.transport.error("TransportClient listener failed: \(error, privacy: .public)")
         }
     }
 
     func stop() {
+        // Drain outbound first so an in-flight send finishes before we
+        // tear down the connection underneath it.
+        outboundContinuation?.finish()
+        outboundContinuation = nil
+        let drainingOutbound = outboundTask
+        outboundTask = nil
+
         consumerTask?.cancel()
         consumerTask = nil
         byteContinuation?.finish()
         byteContinuation = nil
-        listener?.cancel()
-        connection?.cancel()
+
+        let closingConnection = connection
+        let closingListener = listener
         listener = nil
         connection = nil
+
+        Task { [drainingOutbound, closingConnection, closingListener] in
+            await drainingOutbound?.value
+            closingConnection?.cancel()
+            closingListener?.cancel()
+        }
+    }
+
+    /// Enqueues a message for in-order delivery. Non-blocking. Use this
+    /// from callback sites where you want order-preserving fire-and-forget
+    /// semantics. Errors are logged but not propagated.
+    func enqueue(_ message: Message) {
+        guard let continuation = outboundContinuation else {
+            Log.transport.error("TransportClient.enqueue called before start() or after stop(); dropping message")
+            return
+        }
+        continuation.yield(message)
     }
 
     func send(_ message: Message) async throws {
@@ -63,6 +100,14 @@ final class TransportClient: ObservableObject {
                 if let error = error { cont.resume(throwing: error) }
                 else { cont.resume() }
             })
+        }
+    }
+
+    private func deliverOutbound(_ message: Message) async {
+        do {
+            try await send(message)
+        } catch {
+            Log.transport.error("TransportClient send error: \(error, privacy: .public)")
         }
     }
 
@@ -97,14 +142,7 @@ final class TransportClient: ObservableObject {
                         screenWidth: UInt16(UIScreen.main.nativeBounds.width),
                         screenHeight: UInt16(UIScreen.main.nativeBounds.height)
                     )
-                    Task {
-                        do {
-                            try await self.send(hello)
-                            Log.transport.info("TransportClient: hello sent")
-                        } catch {
-                            Log.transport.error("TransportClient hello send failed: \(error, privacy: .public)")
-                        }
-                    }
+                    self.enqueue(hello)
                 case .failed, .cancelled:
                     self.isConnected = false
                     self.byteContinuation?.finish()
