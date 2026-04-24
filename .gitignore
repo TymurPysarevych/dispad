@@ -48,3 +48,7 @@ docs/plans/
 
 # Logs
 *.log
+
+# Release artifacts
+dist/
+
