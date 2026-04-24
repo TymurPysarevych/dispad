@@ -174,8 +174,18 @@ actor UsbChannel {
         // One long-running read drains bytes for the life of the channel.
         // length: Int.max means "read until EOF"; handler fires per chunk
         // with done:false, and once with done:true at EOF/error.
-        print("UsbChannel: starting read loop on ioQueue")
-        rawIO.read(offset: 0, length: Int.max, queue: ioQueue) { [weak self] done, data, error in
+        // Fire the handler as soon as a single byte is available.
+        rawIO.setLimit(lowWater: 1)
+
+        // `length: SIZE_MAX` is the dispatch_io streaming idiom — it means
+        // "read until EOF, invoke the handler every time bytes arrive".
+        // Plain `Int.max` is literally 2^63-1 bytes, so the handler would
+        // only fire when that many bytes had accumulated (never in practice).
+        // In Swift we reach SIZE_MAX by bit-reinterpreting UInt.max as Int.
+        let sizeMax = Int(bitPattern: UInt.max)
+
+        print("UsbChannel: starting read loop on ioQueue (length=SIZE_MAX)")
+        rawIO.read(offset: 0, length: sizeMax, queue: ioQueue) { [weak self] done, data, error in
             guard let self else { return }
             let dataCount = data?.count ?? 0
             print("UsbChannel: read fire done=\(done) bytes=\(dataCount) error=\(error)")
