@@ -1,6 +1,10 @@
 import Foundation
 import DispadProtocol
 
+enum TransportError: Error {
+    case notConnected
+}
+
 @MainActor
 final class TransportServer: ObservableObject {
     @Published var isConnected: Bool = false
@@ -9,7 +13,7 @@ final class TransportServer: ObservableObject {
 
     private var channel: UsbChannel?
     private var eventTask: Task<Void, Never>?
-    private let reader = FrameReader()
+    private var reader = FrameReader()
 
     func start() {
         let channel = UsbChannel()
@@ -30,11 +34,10 @@ final class TransportServer: ObservableObject {
         channel = nil
     }
 
-    func send(_ message: Message) {
+    func send(_ message: Message) async throws {
+        guard let channel else { throw TransportError.notConnected }
         let frame = WireCodec.encode(message)
-        Task { [channel] in
-            try? await channel?.send(frame)
-        }
+        try await channel.send(frame)
     }
 
     private func handle(_ event: UsbChannel.Event) async {
@@ -43,6 +46,7 @@ final class TransportServer: ObservableObject {
             self.isConnected = true
         case .disconnected:
             self.isConnected = false
+            self.reader = FrameReader()
         case let .received(data):
             self.reader.feed(data)
             do {

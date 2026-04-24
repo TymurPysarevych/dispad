@@ -3,6 +3,10 @@ import Network
 import UIKit
 import DispadProtocol
 
+enum TransportError: Error {
+    case notConnected
+}
+
 @MainActor
 final class TransportClient: ObservableObject {
     @Published var isConnected: Bool = false
@@ -11,7 +15,7 @@ final class TransportClient: ObservableObject {
 
     private var listener: NWListener?
     private var connection: NWConnection?
-    private let reader = FrameReader()
+    private var reader = FrameReader()
     private let queue = DispatchQueue(label: "dispad.transport.client")
     private var byteContinuation: AsyncStream<Data>.Continuation?
     private var consumerTask: Task<Void, Never>?
@@ -46,13 +50,19 @@ final class TransportClient: ObservableObject {
         connection = nil
     }
 
-    func send(_ message: Message) {
-        guard let connection else { return }
+    func send(_ message: Message) async throws {
+        guard let connection else { throw TransportError.notConnected }
         let frame = WireCodec.encode(message)
-        connection.send(content: frame, completion: .contentProcessed { _ in })
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            connection.send(content: frame, completion: .contentProcessed { error in
+                if let error = error { cont.resume(throwing: error) }
+                else { cont.resume() }
+            })
+        }
     }
 
     private func accept(_ connection: NWConnection) {
+        self.reader = FrameReader()
         self.connection?.cancel()
         self.connection = connection
 
@@ -81,7 +91,10 @@ final class TransportClient: ObservableObject {
                         screenWidth: UInt16(UIScreen.main.nativeBounds.width),
                         screenHeight: UInt16(UIScreen.main.nativeBounds.height)
                     )
-                    self.send(hello)
+                    Task {
+                        do { try await self.send(hello) }
+                        catch { print("TransportClient hello send failed: \(error)") }
+                    }
                 case .failed, .cancelled:
                     self.isConnected = false
                     self.byteContinuation?.finish()
@@ -105,6 +118,7 @@ final class TransportClient: ObservableObject {
             print("TransportClient decode error: \(error)")
             connection.cancel()
             byteContinuation?.finish()
+            reader = FrameReader()
         }
     }
 
