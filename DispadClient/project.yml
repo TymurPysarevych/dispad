@@ -31,6 +31,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         UIApplicationSupportsIndirectInputEvents: true
+        NSLocalNetworkUsageDescription: "Dispad uses a local network port to receive your Mac's screen over a USB connection."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dispad.client
