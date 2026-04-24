@@ -28,12 +28,17 @@ final class TransportClient: ObservableObject {
             let listener = try NWListener(using: params, on: port)
             self.listener = listener
 
+            listener.stateUpdateHandler = { state in
+                print("TransportClient listener state: \(state)")
+            }
             listener.newConnectionHandler = { [weak self] connection in
+                print("TransportClient: new connection from \(connection.endpoint)")
                 Task { @MainActor in
                     self?.accept(connection)
                 }
             }
             listener.start(queue: queue)
+            print("TransportClient: starting listener on port \(port.rawValue)")
         } catch {
             print("TransportClient listener failed: \(error)")
         }
