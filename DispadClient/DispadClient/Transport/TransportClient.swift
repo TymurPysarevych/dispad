@@ -177,16 +177,40 @@ final class TransportClient: ObservableObject {
 
     private func consume(_ chunk: Data, connection: NWConnection) async {
         reader.feed(chunk)
-        do {
-            while let payload = try reader.nextFrame() {
+        while true {
+            let payload: Data?
+            do {
+                payload = try reader.nextFrame()
+            } catch {
+                // Framing-level error. Genuinely unrecoverable: the byte
+                // stream is corrupt and we can't tell where frames end.
+                // Cancel and let the next reconnect resync.
+                Log.transport.error("TransportClient framing error: \(error, privacy: .public)")
+                connection.cancel()
+                byteContinuation?.finish()
+                reader = FrameReader()
+                return
+            }
+            guard let payload else { return }
+
+            do {
                 let message = try WireCodec.decode(payload: payload)
                 onMessage?(message)
+            } catch let error as WireError {
+                switch error {
+                case .unknownMessageType(let type):
+                    // Forward-compat: a newer Mac sent a message we don't
+                    // understand. Skip it and keep the connection alive.
+                    Log.transport.info("TransportClient ignoring unknown message type \(type, privacy: .public)")
+                default:
+                    // Truncated payload, etc. The frame boundary itself is
+                    // intact (FrameReader already handed us a complete
+                    // payload), so we can keep reading.
+                    Log.transport.error("TransportClient decode error: \(error, privacy: .public)")
+                }
+            } catch {
+                Log.transport.error("TransportClient decode error: \(error, privacy: .public)")
             }
-        } catch {
-            Log.transport.error("TransportClient decode error: \(error, privacy: .public)")
-            connection.cancel()
-            byteContinuation?.finish()
-            reader = FrameReader()
         }
     }
 
