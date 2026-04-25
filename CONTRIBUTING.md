@@ -12,6 +12,8 @@ The `.xcodeproj` bundles are not committed — they're regenerated from `project
 
 You need Xcode 15 or newer and macOS 13 or newer to build.
 
+To build a release DMG locally with `./scripts/build-dmg.sh`, you'll also need [`create-dmg`](https://github.com/create-dmg/create-dmg) (`brew install create-dmg`). It packages the app with the drag-onto-Applications layout users see when they download a release.
+
 ## Running tests
 
 ```bash

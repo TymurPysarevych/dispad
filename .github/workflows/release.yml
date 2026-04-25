@@ -16,8 +16,8 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - name: Install build tooling
+        run: brew install xcodegen create-dmg
       - name: Build DMG
         env:
           TAG: ${{ github.ref_name }}

@@ -37,7 +37,7 @@ DispadClient.app on the iPad:
 ### Mac side (DispadHost)
 
 1. Download the latest `DispadHost.dmg` from [Releases](../../releases).
-2. Drag `DispadHost.app` to `/Applications`.
+2. Open the DMG and drag `DispadHost.app` onto the `Applications` shortcut shown in the install window.
 3. Launch DispadHost. On first launch a welcome sheet appears — click **Install auto-launch** to register a LaunchAgent so the app starts at every login. Click Skip if you don't want auto-launch.
 4. Grant Screen Recording permission in System Settings → Privacy & Security.
 
