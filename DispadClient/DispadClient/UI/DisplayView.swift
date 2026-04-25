@@ -74,8 +74,23 @@ final class ClientCoordinator: ObservableObject {
                 frameCounter.tick(accepted: false)
             }
 
+        case let .displayMode(mode):
+            let gravity = Self.videoGravity(for: mode)
+            if displayLayer.videoGravity != gravity {
+                displayLayer.videoGravity = gravity
+                Log.pipeline.info("DisplayMode set to \(String(describing: mode), privacy: .public)")
+            }
+
         case .hello, .heartbeat:
             break
+        }
+    }
+
+    private static func videoGravity(for mode: DisplayFillMode) -> AVLayerVideoGravity {
+        switch mode {
+        case .fit:     return .resizeAspect
+        case .fill:    return .resizeAspectFill
+        case .stretch: return .resize
         }
     }
 
