@@ -3,6 +3,16 @@ import CoreMedia
 import CoreVideo
 import DispadProtocol
 
+extension DisplayFillMode {
+    /// `@AppStorage` and similar UserDefaults APIs prefer `Int` for
+    /// persistence. Use the raw `Int` value as the storage representation.
+    var storageValue: Int { Int(rawValue) }
+
+    static func from(storageValue value: Int) -> DisplayFillMode {
+        DisplayFillMode(rawValue: UInt8(clamping: value)) ?? .fit
+    }
+}
+
 @main
 struct DispadHostApp: App {
     @StateObject private var coordinator = HostCoordinator()
@@ -76,6 +86,11 @@ final class FrameCounter {
 final class HostCoordinator: ObservableObject {
     @Published var state: HostState = .idle
 
+    @Published var displayMode: DisplayFillMode = {
+        let raw = UserDefaults.standard.integer(forKey: "com.dispad.host.displayMode")
+        return DisplayFillMode.from(storageValue: raw)
+    }()
+
     private let capture = CaptureEngine()
     private let encoder = HEVCEncoder()
     private let transport = TransportServer()
@@ -84,10 +99,20 @@ final class HostCoordinator: ObservableObject {
         transport.onMessage = { [weak self] message in
             Log.pipeline.debug("received \(String(describing: message), privacy: .public)")
             if case .hello = message {
-                Task { @MainActor in self?.start() }
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.start()
+                    self.transport.enqueue(.displayMode(self.displayMode))
+                }
             }
         }
         startTransport()
+    }
+
+    func setDisplayMode(_ mode: DisplayFillMode) {
+        displayMode = mode
+        UserDefaults.standard.set(mode.storageValue, forKey: "com.dispad.host.displayMode")
+        transport.enqueue(.displayMode(mode))
     }
 
     func startTransport() {
