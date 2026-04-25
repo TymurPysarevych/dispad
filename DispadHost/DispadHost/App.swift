@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreGraphics
 import CoreMedia
 import CoreVideo
 import DispadProtocol
@@ -96,6 +97,15 @@ final class HostCoordinator: ObservableObject {
     private let transport = TransportServer()
 
     init() {
+        // Ask for Screen Recording permission at launch instead of waiting
+        // for the iPad's hello to trigger SCShareableContent. Without this,
+        // a user who hasn't connected an iPad yet will never see the TCC
+        // prompt and will think the app is silently broken.
+        if !CGPreflightScreenCaptureAccess() {
+            Log.pipeline.info("Screen Recording permission not yet granted — requesting")
+            _ = CGRequestScreenCaptureAccess()
+        }
+
         transport.onMessage = { [weak self] message in
             Log.pipeline.debug("received \(String(describing: message), privacy: .public)")
             if case .hello = message {
