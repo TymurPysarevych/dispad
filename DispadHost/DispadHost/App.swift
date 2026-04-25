@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import CoreGraphics
 import CoreMedia
 import CoreVideo
@@ -96,6 +97,8 @@ final class HostCoordinator: ObservableObject {
     private let encoder = HEVCEncoder()
     private let transport = TransportServer()
 
+    private var cancellables = Set<AnyCancellable>()
+
     init() {
         // Ask for Screen Recording permission at launch instead of waiting
         // for the iPad's hello to trigger SCShareableContent. Without this,
@@ -116,7 +119,33 @@ final class HostCoordinator: ObservableObject {
                 }
             }
         }
+
+        // Reflect transport disconnect in the UI so the menu-bar status
+        // doesn't lie that we're "Streaming" after the iPad goes away.
+        // Skip the initial value (false) since startTransport() will flip
+        // us to .waitingForClient explicitly.
+        transport.$isConnected
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] connected in
+                guard let self else { return }
+                if !connected {
+                    Task { @MainActor in self.handleClientDisconnected() }
+                }
+            }
+            .store(in: &cancellables)
+
         startTransport()
+    }
+
+    private func handleClientDisconnected() {
+        // Only react if we were actually streaming. If we were already
+        // .waitingForClient, .idle, or in an .error state, leave it alone.
+        guard case .streaming = state else { return }
+        Log.pipeline.info("Client disconnected; stopping capture and returning to waiting")
+        Task { await capture.stop() }
+        encoder.invalidate()
+        state = .waitingForClient
     }
 
     func setDisplayMode(_ mode: DisplayFillMode) {
