@@ -5,6 +5,16 @@ public enum MessageType: UInt8 {
     case config = 2
     case videoFrame = 3
     case heartbeat = 4
+    case displayMode = 5
+}
+
+public enum DisplayFillMode: UInt8 {
+    /// Preserve aspect ratio with letterbox bars (current default).
+    case fit = 0
+    /// Preserve aspect ratio, fill the screen, crop overflow.
+    case fill = 1
+    /// Stretch to fill, distorting the image.
+    case stretch = 2
 }
 
 public enum Message: Equatable {
@@ -12,6 +22,7 @@ public enum Message: Equatable {
     case config(parameterSets: Data)
     case videoFrame(isKeyframe: Bool, pts: UInt64, naluData: Data)
     case heartbeat
+    case displayMode(DisplayFillMode)
 
     public var type: MessageType {
         switch self {
@@ -19,6 +30,7 @@ public enum Message: Equatable {
         case .config: return .config
         case .videoFrame: return .videoFrame
         case .heartbeat: return .heartbeat
+        case .displayMode: return .displayMode
         }
     }
 }
@@ -50,6 +62,8 @@ public enum WireCodec {
             payload.append(naluData)
         case .heartbeat:
             break
+        case let .displayMode(mode):
+            payload.append(mode.rawValue)
         }
 
         var frame = Data()
@@ -92,6 +106,16 @@ public enum WireCodec {
 
         case .heartbeat:
             return .heartbeat
+
+        case .displayMode:
+            guard body.count == 1 else {
+                throw WireError.truncatedPayload(expected: 1, got: body.count)
+            }
+            let raw = body[body.startIndex]
+            guard let mode = DisplayFillMode(rawValue: raw) else {
+                throw WireError.unknownMessageType(raw)
+            }
+            return .displayMode(mode)
         }
     }
 }

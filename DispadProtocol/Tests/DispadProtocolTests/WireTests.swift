@@ -37,6 +37,18 @@ final class WireTests: XCTestCase {
         XCTAssertEqual(decoded, original)
     }
 
+    func testDisplayModeRoundTripFit() throws {
+        try assertRoundTrip(.displayMode(.fit))
+    }
+
+    func testDisplayModeRoundTripFill() throws {
+        try assertRoundTrip(.displayMode(.fill))
+    }
+
+    func testDisplayModeRoundTripStretch() throws {
+        try assertRoundTrip(.displayMode(.stretch))
+    }
+
     func testUnknownMessageTypeIsRejected() {
         let bogusPayload = Data([0xFF, 0x00, 0x01])
         XCTAssertThrowsError(try WireCodec.decode(payload: bogusPayload)) { error in
@@ -82,6 +94,13 @@ final class WireTests: XCTestCase {
                 XCTFail("expected lengthTooLarge, got \(error)")
             }
         }
+    }
+
+    private func assertRoundTrip(_ original: Message) throws {
+        let encoded = WireCodec.encode(original)
+        let payload = try stripLengthPrefix(encoded)
+        let decoded = try WireCodec.decode(payload: payload)
+        XCTAssertEqual(decoded, original)
     }
 
     private func stripLengthPrefix(_ framed: Data) throws -> Data {
