@@ -109,6 +109,24 @@ final class HostCoordinator: ObservableObject {
             _ = CGRequestScreenCaptureAccess()
         }
 
+        // If the user has auto-launch enabled and they just launched us
+        // manually (from Finder/Dock/Xcode rather than via launchd), refresh
+        // the LaunchAgent plist on disk so upgrades to its contents take
+        // effect without a manual disable/enable round trip.
+        //
+        // Skip this when launchd is our parent (XPC_SERVICE_NAME is set to
+        // our label) — otherwise install() would `bootout` the very service
+        // hosting us and we'd be terminated mid-launch.
+        let xpcService = ProcessInfo.processInfo.environment["XPC_SERVICE_NAME"]
+        if xpcService != LaunchAgentInstaller.label, LaunchAgentInstaller.isInstalled {
+            do {
+                try LaunchAgentInstaller.install()
+                Log.pipeline.info("LaunchAgent refreshed from bundled template")
+            } catch {
+                Log.pipeline.error("LaunchAgent refresh failed: \(error, privacy: .public)")
+            }
+        }
+
         transport.onMessage = { [weak self] message in
             Log.pipeline.debug("received \(String(describing: message), privacy: .public)")
             if case .hello = message {
