@@ -72,6 +72,10 @@ See [`docs/installation.md`](docs/installation.md) for troubleshooting.
 3. Connect the iPad to the Mac with a USB-C cable.
 4. The connection establishes automatically. The iPad shows the Mac's screen.
 
+### Display fill mode
+
+Open the dispad menu-bar icon and use the **Display fill** picker to switch between **Fit** (preserve aspect ratio with letterbox bars), **Fill** (preserve aspect ratio, crop overflow), and **Stretch** (distort to fill). The choice is remembered across launches.
+
 ## Project layout
 
 ```
