@@ -56,6 +56,10 @@ enum LaunchAgentInstaller {
             throw InstallError.writeFailed(error)
         }
 
+        // Bootout any prior instance first so this is idempotent across
+        // upgrades that change the plist contents (e.g., KeepAlive
+        // semantics). bootout fails harmlessly if nothing is loaded.
+        try? runLaunchctl(["bootout", "gui/\(getuid())/\(label)"])
         try runLaunchctl(["bootstrap", "gui/\(getuid())", destURL.path])
     }
 
