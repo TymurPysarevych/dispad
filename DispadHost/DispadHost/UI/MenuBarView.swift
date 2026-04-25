@@ -12,9 +12,7 @@ struct MenuBarView: View {
             Divider()
             launchAgentSection
             Divider()
-            Button("Open log file") {
-                NSWorkspace.shared.open(URL(fileURLWithPath: "/tmp/dispad-host.log"))
-            }
+            Button("Open recent logs") { exportAndOpenLogs() }
             Button("Quit dispad") { NSApplication.shared.terminate(nil) }
         }
         .padding(12)
@@ -66,6 +64,39 @@ struct MenuBarView: View {
         }
         if let launchAgentError {
             Text(launchAgentError).foregroundStyle(.red).font(.caption)
+        }
+    }
+
+    /// Dumps the last hour of `com.dispad.host` log entries to a temp file
+    /// and opens it. We can't ask Console.app to apply a subsystem filter
+    /// for us, so this is the most practical way to give users something
+    /// readable in one click without teaching them log show predicates.
+    private func exportAndOpenLogs() {
+        Task.detached {
+            let url = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("dispad-host.log")
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/log")
+            process.arguments = [
+                "show",
+                "--predicate", "subsystem == \"com.dispad.host\"",
+                "--last", "1h",
+                "--style", "compact"
+            ]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                try data.write(to: url)
+                await MainActor.run { NSWorkspace.shared.open(url) }
+            } catch {
+                Log.pipeline.error("Failed to export logs: \(error, privacy: .public)")
+            }
         }
     }
 }

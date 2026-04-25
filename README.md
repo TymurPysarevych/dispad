@@ -41,6 +41,8 @@ DispadClient.app on the iPad:
 3. Launch DispadHost. On first launch a welcome sheet appears — click **Install auto-launch** to register a LaunchAgent so the app starts at every login. Click Skip if you don't want auto-launch.
 4. Grant Screen Recording permission in System Settings → Privacy & Security.
 
+   On ad-hoc-signed builds macOS sometimes silently denies the permission instead of showing a prompt. If DispadHost doesn't appear in the Screen Recording list, click the `+` button there and add `/Applications/DispadHost.app` manually, then enable the toggle and relaunch the app.
+
 The build is unsigned. If macOS refuses to open it, run:
 
 ```bash
