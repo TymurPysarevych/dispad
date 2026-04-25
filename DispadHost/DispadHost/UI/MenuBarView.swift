@@ -1,4 +1,5 @@
 import SwiftUI
+import DispadProtocol
 
 struct MenuBarView: View {
     @ObservedObject var coordinator: HostCoordinator
@@ -10,6 +11,8 @@ struct MenuBarView: View {
             Divider()
             Button("Send test heartbeat") { coordinator.sendTest() }
             Divider()
+            displayModePicker
+            Divider()
             launchAgentSection
             Divider()
             Button("Open recent logs") { exportAndOpenLogs() }
@@ -17,6 +20,18 @@ struct MenuBarView: View {
         }
         .padding(12)
         .frame(width: 260)
+    }
+
+    @ViewBuilder private var displayModePicker: some View {
+        Picker("Display fill", selection: Binding(
+            get: { coordinator.displayMode },
+            set: { coordinator.setDisplayMode($0) }
+        )) {
+            Text("Fit").tag(DisplayFillMode.fit)
+            Text("Fill").tag(DisplayFillMode.fill)
+            Text("Stretch").tag(DisplayFillMode.stretch)
+        }
+        .pickerStyle(.menu)
     }
 
     @ViewBuilder private var statusRow: some View {
